@@ -1227,7 +1227,7 @@
             <div class="empty-state" style="padding: 12px;">
               Nenhum alimento encontrado.<br>
               <button class="btn-primary" style="margin-top: 10px; padding: 10px 14px;"
-                      onclick="buscarComIA(${JSON.stringify(query)})">
+                      onclick="buscarComIA(document.getElementById('add-search').value)">
                 🔍 Buscar "${safeQ}" com IA
               </button>
               <div style="margin-top: 8px; font-size: 11px; color: var(--text-dim);">
@@ -1691,7 +1691,7 @@
             "anthropic-dangerous-direct-browser-access": "true"
           },
           body: JSON.stringify({
-            model: "claude-haiku-4-5",
+            model: "claude-haiku-4-5-20251001",
             max_tokens: 300,
             system: "Voce e um nutricionista brasileiro especializado em tabelas nutricionais. Retorne SOMENTE um JSON valido (sem markdown, sem texto antes ou depois) com os macros do alimento solicitado, por 100g (ou 100ml se for liquido).\n\nRegras:\n- Use valores tipicos brasileiros (tabela TACO/UNICAMP ou similar)\n- Se for ambiguo, escolha a versao mais comum/padrao no Brasil\n- Liquidos (leite, suco, refri, agua, cafe, cerveja, vinho): unit=\"ml\"\n- Solidos: unit=\"g\"\n- Categoria: uma das seguintes: proteina, carboidrato, gordura, fruta, vegetal, doce, bebida, composto\n- Para receitas/refeicoes mistas (ex: 'feijoada', 'estrogonofe'): categoria=\"composto\"\n\nFormato EXATO:\n{\"nome\":\"Nome canonico em pt-BR sem acentos\",\"kcal_per_100g\":N,\"protein_per_100g\":N,\"carb_per_100g\":N,\"fat_per_100g\":N,\"unit\":\"g\" ou \"ml\",\"categoria\":\"...\"}",
             messages: [{
