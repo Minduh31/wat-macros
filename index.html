@@ -1221,7 +1221,22 @@
       const results = searchFood(query);
       const el = document.getElementById("add-results");
       if (!results.length) {
-        el.innerHTML = query ? '<div class="empty-state" style="padding: 12px;">Nenhum alimento encontrado. Use "Alimento custom".</div>' : "";
+        if (query) {
+          const safeQ = escapeHtml(query);
+          el.innerHTML = `
+            <div class="empty-state" style="padding: 12px;">
+              Nenhum alimento encontrado.<br>
+              <button class="btn-primary" style="margin-top: 10px; padding: 10px 14px;"
+                      onclick="buscarComIA(${JSON.stringify(query)})">
+                🔍 Buscar "${safeQ}" com IA
+              </button>
+              <div style="margin-top: 8px; font-size: 11px; color: var(--text-dim);">
+                A IA pesquisa os macros do alimento e cadastra pra voce (custa ~R$0,01)
+              </div>
+            </div>`;
+        } else {
+          el.innerHTML = "";
+        }
         return;
       }
       el.innerHTML = results.map(f => {
@@ -1647,6 +1662,106 @@
       `;
     }
 
+    // ===== BUSCAR ALIMENTO COM IA =====
+    async function buscarComIA(query) {
+      query = (query || "").trim();
+      if (!query) return;
+      const apiKey = state.config.apiKey;
+      if (!apiKey || !apiKey.startsWith("sk-ant")) {
+        toast("Configure sua API key Claude nas configuracoes", "error");
+        openModal("modal-settings");
+        return;
+      }
+
+      // Loading state
+      const el = document.getElementById("add-results");
+      el.innerHTML = `
+        <div class="empty-state" style="padding: 16px;">
+          <div class="spinner"></div>
+          <p style="margin-top: 12px;">Buscando "${escapeHtml(query)}"...</p>
+        </div>`;
+
+      try {
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true"
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5",
+            max_tokens: 300,
+            system: "Voce e um nutricionista brasileiro especializado em tabelas nutricionais. Retorne SOMENTE um JSON valido (sem markdown, sem texto antes ou depois) com os macros do alimento solicitado, por 100g (ou 100ml se for liquido).\n\nRegras:\n- Use valores tipicos brasileiros (tabela TACO/UNICAMP ou similar)\n- Se for ambiguo, escolha a versao mais comum/padrao no Brasil\n- Liquidos (leite, suco, refri, agua, cafe, cerveja, vinho): unit=\"ml\"\n- Solidos: unit=\"g\"\n- Categoria: uma das seguintes: proteina, carboidrato, gordura, fruta, vegetal, doce, bebida, composto\n- Para receitas/refeicoes mistas (ex: 'feijoada', 'estrogonofe'): categoria=\"composto\"\n\nFormato EXATO:\n{\"nome\":\"Nome canonico em pt-BR sem acentos\",\"kcal_per_100g\":N,\"protein_per_100g\":N,\"carb_per_100g\":N,\"fat_per_100g\":N,\"unit\":\"g\" ou \"ml\",\"categoria\":\"...\"}",
+            messages: [{
+              role: "user",
+              content: `Alimento buscado: "${query}"`
+            }]
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error("API " + response.status + ": " + errText.slice(0, 150));
+        }
+
+        const data = await response.json();
+        let text = data.content[0].text.trim();
+
+        // Limpa markdown caso tenha
+        text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+
+        // Tenta extrair JSON do meio do texto se nao for puro
+        let parsed;
+        try {
+          parsed = JSON.parse(text);
+        } catch (e) {
+          const match = text.match(/\{[\s\S]*\}/);
+          if (!match) throw new Error("Resposta da IA nao continha JSON valido");
+          parsed = JSON.parse(match[0]);
+        }
+
+        // Valida
+        if (!parsed.nome || isNaN(parseFloat(parsed.kcal_per_100g))) {
+          throw new Error("IA retornou dados incompletos");
+        }
+
+        // Cria custom food
+        const id = "ai_" + Date.now();
+        const unit = parsed.unit === "ml" ? "ml" : "g";
+        const newFood = {
+          id,
+          nome: parsed.nome,
+          categoria: parsed.categoria || "composto",
+          unit,
+          kcal_per_100g: parseFloat(parsed.kcal_per_100g),
+          protein_per_100g: parseFloat(parsed.protein_per_100g) || 0,
+          carb_per_100g: parseFloat(parsed.carb_per_100g) || 0,
+          fat_per_100g: parseFloat(parsed.fat_per_100g) || 0,
+          unidade_referencia: { gramas: 100, descricao: "100" + unit }
+        };
+        state.alimentosCustom.push(newFood);
+        saveState();
+
+        // Auto-seleciona
+        selecionarAlimento(id);
+        document.getElementById("add-search").value = newFood.nome;
+        toast("✨ Encontrado pela IA: " + newFood.nome);
+      } catch (err) {
+        console.error("buscarComIA error:", err);
+        el.innerHTML = `
+          <div class="empty-state" style="padding: 12px; color: var(--red);">
+            <strong>Erro na busca</strong><br>
+            <span style="font-size: 12px;">${escapeHtml(err.message)}</span><br>
+            <button class="btn-secondary" style="margin-top: 8px;"
+                    onclick="closeModal('modal-add'); openModal('modal-custom')">
+              Cadastrar manual
+            </button>
+          </div>`;
+      }
+    }
+
     // ===== DICA DO DIA (Claude API) =====
     async function gerarDica() {
       const today = todayKey();
@@ -1696,7 +1811,7 @@
             "anthropic-dangerous-direct-browser-access": "true"
           },
           body: JSON.stringify({
-            model: "claude-sonnet-4-5",
+            model: "claude-sonnet-4-6",
             max_tokens: 600,
             system: "Voce e um nutricionista esportivo brasileiro especializado em recomposicao corporal masculina (V-Shape). Estilo direto, sem rodeios, baseado em evidencia. Analise o dia alimentar do usuario e da 1 dica curta e acionavel pra ele aplicar amanha. Maximo 3 paragrafos. Em portugues brasileiro. Foque no maior gap macronutricional.",
             messages: [{ role: "user", content: userMsg }]
