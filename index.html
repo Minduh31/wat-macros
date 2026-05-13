@@ -1860,10 +1860,37 @@
       if (["hoje","calendario","grafico"].includes(hash)) switchView(hash);
     });
 
-    // ===== SERVICE WORKER =====
+    // ===== SERVICE WORKER + AUTO UPDATE =====
+    function showUpdateBanner() {
+      if (document.getElementById("update-banner")) return;
+      const banner = document.createElement("div");
+      banner.id = "update-banner";
+      banner.style.cssText = "position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--green);color:white;padding:12px 20px;border-radius:10px;z-index:300;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-weight:600;font-size:13px;max-width:calc(100% - 32px);text-align:center;";
+      banner.innerHTML = "✨ Nova versão disponível — Toque para atualizar";
+      banner.onclick = () => window.location.reload();
+      document.body.appendChild(banner);
+    }
+
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js").catch(err => console.log("SW falhou:", err));
+        navigator.serviceWorker.register("sw.js").then(reg => {
+          // Detecta novo SW instalado em background
+          reg.addEventListener("updatefound", () => {
+            const newSW = reg.installing;
+            if (!newSW) return;
+            newSW.addEventListener("statechange", () => {
+              if (newSW.state === "installed" && navigator.serviceWorker.controller) {
+                showUpdateBanner();
+              }
+            });
+          });
+          // Verifica updates quando o app volta a ficar visivel (ex: trocar de app e voltar)
+          document.addEventListener("visibilitychange", () => {
+            if (!document.hidden) reg.update().catch(() => {});
+          });
+          // Verifica update inicial 5s depois do load
+          setTimeout(() => reg.update().catch(() => {}), 5000);
+        }).catch(err => console.log("SW falhou:", err));
       });
     }
 
