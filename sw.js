@@ -6,7 +6,7 @@
  *  - Network-only para chamadas da Claude API (sempre online)
  *  - Fallback ao cache se offline
  */
-const CACHE_NAME = "wat-macros-v5";
+const CACHE_NAME = "wat-macros-v6";
 const ASSETS = [
   "./index.html",
   "./taco-foods.js",
